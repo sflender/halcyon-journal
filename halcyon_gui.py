@@ -295,6 +295,15 @@ class JournalApp(QMainWindow):
         
         layout.addLayout(export_layout)
         
+        # Search index button
+        search_layout = QHBoxLayout()
+        
+        self.rebuild_search_btn = QPushButton("🔍 Rebuild Search Index")
+        self.rebuild_search_btn.clicked.connect(self._rebuild_embeddings)
+        search_layout.addWidget(self.rebuild_search_btn)
+        
+        layout.addLayout(search_layout)
+        
         layout.addStretch()
         
         self.tab_widget.addTab(settings_widget, "⚙️ Settings")
@@ -669,10 +678,14 @@ class JournalApp(QMainWindow):
                 self.embeddings_file = self.journal_dir / "embeddings.json"
                 self.dir_display.setText(str(self.journal_dir))
                 
+                # Rebuild embeddings for the new directory
+                self._rebuild_embeddings()
+                
                 QMessageBox.information(
                     self, 
                     "Directory Changed", 
-                    f"Successfully moved {moved_count} journal entries to the new directory."
+                    f"Successfully moved {moved_count} journal entries to the new directory.\n\n"
+                    "📊 Semantic search has been updated for all entries."
                 )
                 
             else:  # No - use new directory for future entries only
@@ -683,11 +696,22 @@ class JournalApp(QMainWindow):
                     self.embeddings_file = self.journal_dir / "embeddings.json"
                     self.dir_display.setText(str(self.journal_dir))
                     
-                    QMessageBox.information(
-                        self, 
-                        "Directory Changed", 
-                        "New directory set for future entries. Existing entries remain in the old location."
-                    )
+                    # Check if new directory has existing entries and rebuild embeddings
+                    new_entries = list(self.journal_dir.glob("*.md"))
+                    if new_entries:
+                        self._rebuild_embeddings()
+                        QMessageBox.information(
+                            self, 
+                            "Directory Changed", 
+                            f"New directory set with {len(new_entries)} existing entries.\n\n"
+                            "📊 Semantic search has been updated for all entries."
+                        )
+                    else:
+                        QMessageBox.information(
+                            self, 
+                            "Directory Changed", 
+                            "New directory set for future entries. Existing entries remain in the old location."
+                        )
         else:
             # No existing data, just change directory
             new_dir = QFileDialog.getExistingDirectory(self, "Select Journal Directory")
@@ -696,6 +720,17 @@ class JournalApp(QMainWindow):
                 self.journal_dir.mkdir(exist_ok=True)
                 self.embeddings_file = self.journal_dir / "embeddings.json"
                 self.dir_display.setText(str(self.journal_dir))
+                
+                # Check if new directory has existing entries and rebuild embeddings
+                new_entries = list(self.journal_dir.glob("*.md"))
+                if new_entries:
+                    self._rebuild_embeddings()
+                    QMessageBox.information(
+                        self, 
+                        "Directory Changed", 
+                        f"Directory changed to location with {len(new_entries)} existing entries.\n\n"
+                        "📊 Semantic search has been updated for all entries."
+                    )
         
         self.update_stats()
             
@@ -860,16 +895,32 @@ Journal Directory: {self.journal_dir}"""
             embeddings = {}
             journal_files = list(self.journal_dir.glob("*.md"))
             
+            if not journal_files:
+                self.status_bar.showMessage("No journal entries found to index")
+                return
+            
+            self.status_bar.showMessage("Rebuilding search index...")
+            
             for file in journal_files:
                 with open(file, 'r') as f:
                     content = f.read()
                     embeddings[file.name] = self.model.encode(content).tolist()
             
             self._save_embeddings(embeddings)
-            self.status_bar.showMessage("Embeddings updated for all entries")
+            self.status_bar.showMessage(f"Search index updated for {len(journal_files)} entries")
+            
+            # Show success message if called manually
+            if hasattr(self, 'rebuild_search_btn') and self.sender() == self.rebuild_search_btn:
+                QMessageBox.information(
+                    self, 
+                    "Search Index Rebuilt", 
+                    f"Successfully rebuilt search index for {len(journal_files)} journal entries.\n\n"
+                    "Semantic search and AI reflection are now working with all your entries!"
+                )
             
         except Exception as e:
             QMessageBox.warning(self, "Embeddings Error", f"Failed to update embeddings: {str(e)}")
+            self.status_bar.showMessage("Failed to rebuild search index")
             
     def show_about(self):
         """Show about dialog."""
