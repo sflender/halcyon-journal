@@ -206,9 +206,7 @@ class JournalApp(QMainWindow):
         ]
         
         for question in questions:
-            btn = QPushButton(question)
-            btn.setFont(QFont("SF Pro Display", 10))
-            btn.clicked.connect(lambda checked, q=question: self.ask_specific_question(q))
+            btn = self.create_question_button(question)
             quick_buttons_layout.addWidget(btn)
         
         layout.addLayout(quick_buttons_layout)
@@ -471,6 +469,13 @@ class JournalApp(QMainWindow):
         self.progress_bar.setVisible(False)
         self.ai_response.setPlainText("I'm here to listen and support you. Your journal entry shows thoughtful reflection. How are you feeling about what you've written today?")
         self.status_bar.showMessage(f"AI Error: {error}")
+        
+    def create_question_button(self, question):
+        """Create a button for a specific question."""
+        btn = QPushButton(question)
+        btn.setFont(QFont("SF Pro Display", 10))
+        btn.clicked.connect(lambda: self.ask_specific_question(question))
+        return btn
         
     def ask_reflection_question(self):
         """Ask a reflection question."""
