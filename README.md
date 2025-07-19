@@ -10,7 +10,8 @@ A **privacy-focused, local-only interactive journaling app** that processes ever
 - **🔒 Privacy First**: Everything stays on your device - no cloud processing
 - **📚 Smart Search**: Find related entries using semantic similarity
 - **📄 Markdown Storage**: Entries saved as plain Markdown files
-- **🎨 Beautiful UI**: Rich terminal interface with colors and formatting
+- **🎨 Beautiful UI**: Native macOS interface with buttons and modern design
+- **⚙️ Settings**: Customize AI models, export/import data, view statistics
 
 ## 🚀 Quick Start
 
@@ -31,6 +32,12 @@ A **privacy-focused, local-only interactive journaling app** that processes ever
 
 ### Running the App
 
+#### GUI Version (Recommended)
+```bash
+python halcyon_gui.py
+```
+
+#### Terminal Version
 ```bash
 python journal_app.py
 ```
