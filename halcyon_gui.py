@@ -278,8 +278,12 @@ class JournalApp(QMainWindow):
         self.update_stats()
         layout.addWidget(self.stats_display)
         
-        # Export/Import buttons
+        # Export/Import/Backup buttons
         export_layout = QHBoxLayout()
+        
+        backup_btn = QPushButton("💾 Backup Journal")
+        backup_btn.clicked.connect(self.backup_journal)
+        export_layout.addWidget(backup_btn)
         
         export_btn = QPushButton("📤 Export Journal")
         export_btn.clicked.connect(self.export_journal)
@@ -610,14 +614,90 @@ class JournalApp(QMainWindow):
         self.status_bar.showMessage(f"AI model changed to {model_name}")
         
     def change_journal_directory(self):
-        """Change the journal directory."""
-        new_dir = QFileDialog.getExistingDirectory(self, "Select Journal Directory")
-        if new_dir:
-            self.journal_dir = Path(new_dir)
-            self.journal_dir.mkdir(exist_ok=True)
-            self.embeddings_file = self.journal_dir / "embeddings.json"
-            self.dir_display.setText(str(self.journal_dir))
-            self.update_stats()
+        """Change the journal directory with data migration."""
+        old_dir = self.journal_dir
+        
+        # Check if current directory has data
+        current_entries = list(old_dir.glob("*.md"))
+        has_current_data = len(current_entries) > 0
+        
+        if has_current_data:
+            # Ask user what to do with existing data
+            reply = QMessageBox.question(
+                self, 
+                "Existing Journal Data", 
+                f"Your current journal directory has {len(current_entries)} entries.\n\n"
+                "What would you like to do?\n\n"
+                "• 'Yes' = Move all data to the new directory\n"
+                "• 'No' = Keep data in current directory (use new directory for future entries)\n"
+                "• 'Cancel' = Keep current directory",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+            )
+            
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+            elif reply == QMessageBox.StandardButton.Yes:
+                # Move data to new directory
+                new_dir = QFileDialog.getExistingDirectory(self, "Select New Journal Directory")
+                if not new_dir:
+                    return
+                    
+                new_dir_path = Path(new_dir)
+                new_dir_path.mkdir(exist_ok=True)
+                
+                # Move all journal files
+                moved_count = 0
+                for file in current_entries:
+                    try:
+                        import shutil
+                        shutil.move(str(file), str(new_dir_path / file.name))
+                        moved_count += 1
+                    except Exception as e:
+                        QMessageBox.warning(self, "Move Error", f"Failed to move {file.name}: {str(e)}")
+                
+                # Move embeddings file if it exists
+                old_embeddings = old_dir / "embeddings.json"
+                if old_embeddings.exists():
+                    try:
+                        import shutil
+                        shutil.move(str(old_embeddings), str(new_dir_path / "embeddings.json"))
+                    except Exception as e:
+                        QMessageBox.warning(self, "Move Error", f"Failed to move embeddings: {str(e)}")
+                
+                # Update app to use new directory
+                self.journal_dir = new_dir_path
+                self.embeddings_file = self.journal_dir / "embeddings.json"
+                self.dir_display.setText(str(self.journal_dir))
+                
+                QMessageBox.information(
+                    self, 
+                    "Directory Changed", 
+                    f"Successfully moved {moved_count} journal entries to the new directory."
+                )
+                
+            else:  # No - use new directory for future entries only
+                new_dir = QFileDialog.getExistingDirectory(self, "Select New Journal Directory")
+                if new_dir:
+                    self.journal_dir = Path(new_dir)
+                    self.journal_dir.mkdir(exist_ok=True)
+                    self.embeddings_file = self.journal_dir / "embeddings.json"
+                    self.dir_display.setText(str(self.journal_dir))
+                    
+                    QMessageBox.information(
+                        self, 
+                        "Directory Changed", 
+                        "New directory set for future entries. Existing entries remain in the old location."
+                    )
+        else:
+            # No existing data, just change directory
+            new_dir = QFileDialog.getExistingDirectory(self, "Select Journal Directory")
+            if new_dir:
+                self.journal_dir = Path(new_dir)
+                self.journal_dir.mkdir(exist_ok=True)
+                self.embeddings_file = self.journal_dir / "embeddings.json"
+                self.dir_display.setText(str(self.journal_dir))
+        
+        self.update_stats()
             
     def update_stats(self):
         """Update journal statistics."""
@@ -645,6 +725,42 @@ Journal Directory: {self.journal_dir}"""
         
         self.stats_display.setPlainText(stats)
         
+    def backup_journal(self):
+        """Create a backup of all journal data."""
+        backup_dir = QFileDialog.getExistingDirectory(self, "Select Backup Directory")
+        if backup_dir:
+            backup_path = Path(backup_dir)
+            backup_path.mkdir(exist_ok=True)
+            
+            # Create timestamped backup folder
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_folder = backup_path / f"halcyon_backup_{timestamp}"
+            backup_folder.mkdir(exist_ok=True)
+            
+            # Copy all journal files
+            copied_count = 0
+            for file in self.journal_dir.glob("*.md"):
+                try:
+                    import shutil
+                    shutil.copy2(file, backup_folder)
+                    copied_count += 1
+                except Exception as e:
+                    QMessageBox.warning(self, "Backup Error", f"Failed to backup {file.name}: {str(e)}")
+            
+            # Copy embeddings file
+            if self.embeddings_file.exists():
+                try:
+                    import shutil
+                    shutil.copy2(self.embeddings_file, backup_folder)
+                except Exception as e:
+                    QMessageBox.warning(self, "Backup Error", f"Failed to backup embeddings: {str(e)}")
+            
+            QMessageBox.information(
+                self, 
+                "Backup Complete", 
+                f"Successfully backed up {copied_count} journal entries to:\n{backup_folder}"
+            )
+    
     def export_journal(self):
         """Export journal entries."""
         export_dir = QFileDialog.getExistingDirectory(self, "Select Export Directory")
