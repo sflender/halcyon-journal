@@ -772,16 +772,104 @@ Journal Directory: {self.journal_dir}"""
             QMessageBox.information(self, "Export Complete", f"Journal entries exported to {export_dir}")
             
     def import_journal(self):
-        """Import journal entries."""
+        """Import journal entries with conflict resolution."""
         import_dir = QFileDialog.getExistingDirectory(self, "Select Import Directory")
-        if import_dir:
-            # Copy all markdown files
-            import_path = Path(import_dir)
-            for file in import_path.glob("*.md"):
+        if not import_dir:
+            return
+            
+        import_path = Path(import_dir)
+        markdown_files = list(import_path.glob("*.md"))
+        
+        if not markdown_files:
+            QMessageBox.information(self, "No Files Found", "No markdown files found in the selected directory.")
+            return
+        
+        # Check for conflicts
+        conflicts = []
+        safe_imports = []
+        
+        for file in markdown_files:
+            target_file = self.journal_dir / file.name
+            if target_file.exists():
+                conflicts.append(file.name)
+            else:
+                safe_imports.append(file)
+        
+        # Show import summary
+        summary = f"Found {len(markdown_files)} markdown files to import:\n\n"
+        summary += f"• Safe to import: {len(safe_imports)} files\n"
+        if conflicts:
+            summary += f"• Conflicts (same filename): {len(conflicts)} files\n\n"
+            summary += "Conflicting files:\n"
+            for conflict in conflicts:
+                summary += f"  - {conflict}\n"
+            summary += "\nHow would you like to handle conflicts?"
+        
+        if conflicts:
+            reply = QMessageBox.question(
+                self,
+                "Import Journal Entries",
+                summary,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Yes
+            )
+            
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+            elif reply == QMessageBox.StandardButton.Yes:
+                # Import all files (overwrite conflicts)
+                files_to_import = markdown_files
+            else:
+                # Import only safe files (skip conflicts)
+                files_to_import = safe_imports
+        else:
+            # No conflicts, import all
+            files_to_import = markdown_files
+        
+        # Perform the import
+        imported_count = 0
+        failed_count = 0
+        
+        for file in files_to_import:
+            try:
                 import shutil
                 shutil.copy2(file, self.journal_dir)
-            QMessageBox.information(self, "Import Complete", "Journal entries imported successfully!")
-            self.update_stats()
+                imported_count += 1
+            except Exception as e:
+                failed_count += 1
+                QMessageBox.warning(self, "Import Error", f"Failed to import {file.name}: {str(e)}")
+        
+        # Update embeddings for imported files
+        if imported_count > 0:
+            self._rebuild_embeddings()
+        
+        # Show results
+        result_message = f"Import completed!\n\n"
+        result_message += f"✅ Successfully imported: {imported_count} files\n"
+        if failed_count > 0:
+            result_message += f"❌ Failed to import: {failed_count} files\n"
+        if imported_count > 0:
+            result_message += f"\n📊 Semantic search has been updated for all imported entries."
+        
+        QMessageBox.information(self, "Import Complete", result_message)
+        self.update_stats()
+        
+    def _rebuild_embeddings(self):
+        """Rebuild embeddings for all journal entries."""
+        try:
+            embeddings = {}
+            journal_files = list(self.journal_dir.glob("*.md"))
+            
+            for file in journal_files:
+                with open(file, 'r') as f:
+                    content = f.read()
+                    embeddings[file.name] = self.model.encode(content).tolist()
+            
+            self._save_embeddings(embeddings)
+            self.status_bar.showMessage("Embeddings updated for all entries")
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Embeddings Error", f"Failed to update embeddings: {str(e)}")
             
     def show_about(self):
         """Show about dialog."""
